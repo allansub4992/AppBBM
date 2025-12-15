@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { FuelType, StationChain, Vehicle } from "@/types/fuel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Camera, X } from "lucide-react";
+import { Camera, X, Image as ImageIcon, Trash2 } from "lucide-react";
 import { useFuel } from "@/contexts/FuelContext";
 
 interface RefuelLogFormProps {
@@ -34,6 +34,10 @@ export default function RefuelLogForm({ onClose, onSuccess, editRecord }: Refuel
   const [totalCost, setTotalCost] = useState(editRecord?.totalCost.toString() || "");
   const [manualPrice, setManualPrice] = useState(editRecord?.pricePerLiter.toString() || "");
   const [vehicleId, setVehicleId] = useState<string>(editRecord?.vehicleId || "");
+  const [receiptPhoto, setReceiptPhoto] = useState<string | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentPrice = prices?.find(
     (p) => p.fuelType === fuelType && p.station === station
@@ -44,6 +48,45 @@ export default function RefuelLogForm({ onClose, onSuccess, editRecord }: Refuel
     if (value && currentPrice) {
       const calculatedCost = parseFloat(value) * currentPrice.price;
       setTotalCost(calculatedCost.toString());
+    }
+  };
+
+  // Handle camera capture - works on both web and mobile
+  const handleCameraCapture = async () => {
+    // Check if running in native app (WebView)
+    if ((window as any).isNativeApp && (window as any).requestCameraPermission) {
+      (window as any).requestCameraPermission();
+    }
+
+    // Trigger file input click (with camera capture on mobile)
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  // Handle file selection from camera or gallery
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsCapturing(true);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setReceiptPhoto(reader.result as string);
+        setIsCapturing(false);
+      };
+      reader.onerror = () => {
+        setIsCapturing(false);
+        alert("Gagal membaca file");
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Remove captured photo
+  const handleRemovePhoto = () => {
+    setReceiptPhoto(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -214,13 +257,66 @@ export default function RefuelLogForm({ onClose, onSuccess, editRecord }: Refuel
             <Label className="font-body text-brutalist-cream text-base mb-2 block">
               Foto Struk (Opsional)
             </Label>
-            <button
-              type="button"
-              className="w-full brutalist-border brutalist-shadow-cyan bg-brutalist-charcoal p-6 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all duration-75"
-            >
-              <Camera className="w-8 h-8 text-brutalist-cyan mx-auto mb-2" strokeWidth={3} />
-              <span className="font-body text-brutalist-cyan">Ambil Foto Struk</span>
-            </button>
+
+            {/* Hidden file input for camera/gallery */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+
+            {receiptPhoto ? (
+              // Show captured photo preview
+              <div className="relative">
+                <div className="brutalist-border overflow-hidden">
+                  <img
+                    src={receiptPhoto}
+                    alt="Struk"
+                    className="w-full h-48 object-cover"
+                  />
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={handleCameraCapture}
+                    className="flex-1 brutalist-border brutalist-shadow-cyan bg-brutalist-charcoal p-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all duration-75 flex items-center justify-center gap-2"
+                  >
+                    <Camera className="w-5 h-5 text-brutalist-cyan" strokeWidth={3} />
+                    <span className="font-body text-brutalist-cyan text-sm">Ganti Foto</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="brutalist-border brutalist-shadow-pink bg-brutalist-pink p-3 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all duration-75"
+                  >
+                    <Trash2 className="w-5 h-5 text-brutalist-charcoal" strokeWidth={3} />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              // Show capture button
+              <button
+                type="button"
+                onClick={handleCameraCapture}
+                disabled={isCapturing}
+                className="w-full brutalist-border brutalist-shadow-cyan bg-brutalist-charcoal p-6 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all duration-75 disabled:opacity-50"
+              >
+                {isCapturing ? (
+                  <>
+                    <div className="w-8 h-8 border-4 border-brutalist-cyan border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    <span className="font-body text-brutalist-cyan">Memproses...</span>
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-8 h-8 text-brutalist-cyan mx-auto mb-2" strokeWidth={3} />
+                    <span className="font-body text-brutalist-cyan">Ambil Foto Struk</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
 
           {/* Submit Button */}

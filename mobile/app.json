@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "BBM App",
+    "slug": "bbm-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#4A90E2"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.bbmapp",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Aplikasi memerlukan akses kamera untuk mengambil foto.",
+        "NSLocationWhenInUseUsageDescription": "Aplikasi memerlukan akses lokasi untuk menampilkan lokasi SPBU terdekat.",
+        "NSLocationAlwaysUsageDescription": "Aplikasi memerlukan akses lokasi untuk menampilkan lokasi SPBU terdekat."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#4A90E2"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.yourcompany.bbmapp",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "WAKE_LOCK"
+      ],
+      "googleServicesFile": "./google-services.json"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Aplikasi memerlukan akses kamera untuk mengambil foto."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Aplikasi memerlukan akses lokasi untuk menampilkan lokasi SPBU terdekat."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#4A90E2"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id"
+      }
+    }
+  }
+}

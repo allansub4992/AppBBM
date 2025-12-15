@@ -1,17 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { auth } from "../lib/firebase";
-import {
-  User,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-  GoogleAuthProvider,
-  signInWithPopup
-} from "firebase/auth";
+import { supabase } from "../lib/supabase";
+import { User, Session } from "@supabase/supabase-js";
 
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   signInWithGoogle: () => Promise<void>;
@@ -24,22 +17,38 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Listen to Firebase auth state changes
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
       setIsLoading(false);
     });
 
-    return () => unsubscribe();
+    // Listen to Supabase auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setIsLoading(false);
+      }
+    );
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const signInWithGoogle = async () => {
     try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
     } catch (error) {
       console.error("Error signing in with Google:", error);
       alert("Failed to sign in with Google. Check console for details.");
@@ -48,7 +57,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithEmail = async (email: string, password: string) => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) {
+        console.error("Error signing in:", error);
+        return { error: error.message };
+      }
       return { error: null };
     } catch (error: any) {
       console.error("Error signing in:", error);
@@ -58,7 +74,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUpWithEmail = async (email: string, password: string) => {
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+      if (error) {
+        console.error("Error signing up:", error);
+        return { error: error.message };
+      }
       return { error: null };
     } catch (error: any) {
       console.error("Error signing up:", error);
@@ -68,7 +91,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      await firebaseSignOut(auth);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
     } catch (error) {
       console.error("Error signing out:", error);
     }
@@ -78,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        session,
         isAuthenticated: !!user,
         isLoading,
         signInWithGoogle,

@@ -18,6 +18,7 @@ export default defineConfig({
     },
   },
   server: {
+    host: true, // Agar bisa diakses dari HP via IP jaringan
     // @ts-ignore
     allowedHosts: true,
   }

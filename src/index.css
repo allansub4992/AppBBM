@@ -97,4 +97,70 @@
       background-image: radial-gradient(circle, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
       background-size: 4px 4px;
     }
+
+    /* Mobile-first responsive shadows (smaller on mobile) */
+    @media (max-width: 640px) {
+      .brutalist-shadow,
+      .brutalist-shadow-yellow,
+      .brutalist-shadow-pink,
+      .brutalist-shadow-cyan {
+        box-shadow: 4px 4px 0px 0px currentColor;
+      }
+      .brutalist-shadow {
+        box-shadow: 4px 4px 0px 0px #000000;
+      }
+      .brutalist-shadow-yellow {
+        box-shadow: 4px 4px 0px 0px #FFE600;
+      }
+      .brutalist-shadow-pink {
+        box-shadow: 4px 4px 0px 0px #FF006E;
+      }
+      .brutalist-shadow-cyan {
+        box-shadow: 4px 4px 0px 0px #00F5FF;
+      }
+      .brutalist-border {
+        border-width: 3px;
+      }
+    }
+  }
+
+  /* Mobile viewport fix */
+  html, body {
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent zoom on input focus (iOS) */
+  @media (max-width: 640px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Safe area padding for notched devices */
+  @supports (padding: env(safe-area-inset-bottom)) {
+    .pb-safe {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .pt-safe {
+      padding-top: env(safe-area-inset-top);
+    }
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Fix for WebView on Android */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Better touch targets */
+  @media (max-width: 640px) {
+    button, a, [role="button"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
   }

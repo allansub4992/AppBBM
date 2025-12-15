@@ -27,7 +27,7 @@ export default function LoginScreen() {
       }
 
       if (res.error) {
-        setError(res.error.message);
+        setError(res.error);
       } else if (!isLogin) {
         setError("Registrasi berhasil! Silakan login.");
         setIsLogin(true);
