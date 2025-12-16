@@ -1,9 +1,23 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { FuelPrice, RefuelRecord, FuelType, StationChain, Vehicle, Region } from "@/types/fuel";
 import { generateFuelPrices } from "@/data/fuelPrices";
-import { supabase } from "../lib/supabase";
+import { db } from "../lib/firebase";
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  getDocs,
+  query,
+  where,
+  orderBy
+} from "firebase/firestore";
 import { useAuth } from "./AuthContext";
 import { backupService, BackupData } from "@/services/backupService";
+
+
+
 
 interface FuelContextType {
   prices: FuelPrice[];
@@ -91,7 +105,7 @@ export function FuelProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Sync with Supabase on auth change or online
+  // Sync with Firestore on auth change or online
   useEffect(() => {
     if (user && isOnline) {
       syncData();
@@ -127,9 +141,9 @@ export function FuelProvider({ children }: { children: React.ReactNode }) {
 
     if (user && isOnline) {
       try {
-        const { error } = await supabase.from('refuel_records').insert({
-          user_id: user.id,
-          date: newRecord.date,
+        const docRef = await addDoc(collection(db, 'refuel_records'), {
+          user_id: user.uid,
+          date: newRecord.date.toISOString(),
           station: newRecord.station,
           fuel_type: newRecord.fuelType,
           liters: newRecord.liters,
@@ -139,13 +153,12 @@ export function FuelProvider({ children }: { children: React.ReactNode }) {
           created_at: newRecord.createdAt.toISOString()
         });
 
-        if (!error) {
-          updateRecord(newRecord.id, { synced: true });
-        } else {
-          console.error("Supabase insert error:", error);
-        }
+        // Update local record to mark as synced. 
+        // Note: In a real app we might want to update the local ID to docRef.id, 
+        // but for now we keep the local ID to avoid complexity in this refactor.
+        updateRecord(newRecord.id, { synced: true });
       } catch (e) {
-        console.error("Supabase insert exception:", e);
+        console.error("Firestore insert exception:", e);
       }
     }
   };
@@ -155,13 +168,13 @@ export function FuelProvider({ children }: { children: React.ReactNode }) {
       r.id === id ? { ...r, ...updates, synced: updates.synced ?? false } : r
     );
     saveRecords(updatedRecords);
-    // TODO: Implement updates to Supabase (update RPC/row)
+    // TODO: Implement updates to Firestore
   };
 
   const deleteRecord = (id: string) => {
     const filteredRecords = records.filter((r) => r.id !== id);
     saveRecords(filteredRecords);
-    // TODO: Implement delete from Supabase
+    // TODO: Implement delete from Firestore
   };
 
   const addVehicle = (vehicle: Omit<Vehicle, "id" | "createdAt">) => {
@@ -190,21 +203,25 @@ export function FuelProvider({ children }: { children: React.ReactNode }) {
 
     if (isOnline) {
       try {
-        const { data, error } = await supabase.from("fuel_prices").select("*");
-        if (!error && data && data.length > 0) {
-          const remotePrices: FuelPrice[] = data.map(p => ({
-            id: p.id,
+        const querySnapshot = await getDocs(collection(db, "fuel_prices"));
+        const remotePrices: FuelPrice[] = [];
+        querySnapshot.forEach((doc) => {
+          const p = doc.data();
+          remotePrices.push({
+            id: doc.id,
             region: p.region,
             city: p.city,
             station: p.station,
             fuelType: p.fuel_type,
             price: Number(p.price),
-            lastUpdated: new Date(p.last_updated)
-          }));
+            lastUpdated: p.last_updated ? new Date(p.last_updated) : new Date()
+          });
+        });
+
+        if (remotePrices.length > 0) {
           setPrices(remotePrices);
         } else {
-          // Fallback if table empty or error
-          console.warn("Using local prices fallback (Supabase empty or error)");
+          console.warn("Using local prices fallback (Firestore empty)");
           setPrices(localPrices);
         }
       } catch (e) {
@@ -226,15 +243,19 @@ export function FuelProvider({ children }: { children: React.ReactNode }) {
 
     try {
       // Pull latest records
-      const { data, error } = await supabase
-        .from('refuel_records')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('date', { ascending: false });
+      const q = query(
+        collection(db, 'refuel_records'),
+        where('user_id', '==', user.uid),
+        orderBy('date', 'desc')
+      );
 
-      if (!error && data) {
-        const remoteRecords: RefuelRecord[] = data.map(d => ({
-          id: d.id,
+      const querySnapshot = await getDocs(q);
+      const remoteRecords: RefuelRecord[] = [];
+
+      querySnapshot.forEach((doc) => {
+        const d = doc.data();
+        remoteRecords.push({
+          id: doc.id, // Use Firestore ID
           date: new Date(d.date),
           station: d.station,
           fuelType: d.fuel_type,
@@ -244,8 +265,10 @@ export function FuelProvider({ children }: { children: React.ReactNode }) {
           vehicleId: d.vehicle_id,
           createdAt: new Date(d.created_at),
           synced: true
-        }));
+        });
+      });
 
+      if (remoteRecords.length > 0) {
         saveRecords(remoteRecords);
       }
     } catch (e) {
@@ -255,14 +278,13 @@ export function FuelProvider({ children }: { children: React.ReactNode }) {
       setIsSyncing(false);
     }
   };
-
   const downloadBackup = async () => {
     if (!user) return;
     try {
       setIsSyncing(true);
 
       // Get cloud data
-      const backup = await backupService.exportData(user.id);
+      const backup = await backupService.exportData(user.uid);
 
       // Inject local vehicles (as we don't sync them to DB yet)
       backup.data.vehicles = vehicles;
