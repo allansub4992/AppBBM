@@ -13,9 +13,9 @@ import {
   where,
   orderBy
 } from "firebase/firestore";
+import { supabase } from "../lib/supabase"; // Use centralized Supabase client
 import { useAuth } from "./AuthContext";
 import { backupService, BackupData } from "@/services/backupService";
-
 
 
 
@@ -135,33 +135,49 @@ export function FuelProvider({ children }: { children: React.ReactNode }) {
       synced: false,
     };
 
-    // Optimistic update
+    // Optimistic update - save to localStorage first
     const updatedRecords = [newRecord, ...records];
     saveRecords(updatedRecords);
 
     if (user && isOnline) {
-      try {
-        const docRef = await addDoc(collection(db, 'refuel_records'), {
-          user_id: user.uid,
-          date: newRecord.date.toISOString(),
-          station: newRecord.station,
-          fuel_type: newRecord.fuelType,
-          liters: newRecord.liters,
-          total_cost: newRecord.totalCost,
-          price_per_liter: newRecord.pricePerLiter,
-          vehicle_id: newRecord.vehicleId, // Added vehicleId mapping
-          created_at: newRecord.createdAt.toISOString()
-        });
+      const recordData = {
+        user_id: user.uid,
+        date: newRecord.date.toISOString(),
+        station: newRecord.station,
+        fuel_type: newRecord.fuelType,
+        liters: newRecord.liters,
+        total_cost: newRecord.totalCost,
+        price_per_liter: newRecord.pricePerLiter,
+        vehicle_id: newRecord.vehicleId,
+        created_at: newRecord.createdAt.toISOString()
+      };
 
-        // Update local record to mark as synced. 
-        // Note: In a real app we might want to update the local ID to docRef.id, 
-        // but for now we keep the local ID to avoid complexity in this refactor.
-        updateRecord(newRecord.id, { synced: true });
-      } catch (e) {
-        console.error("Firestore insert exception:", e);
-      }
+      // DUAL DATABASE: Write to both Firebase AND Supabase simultaneously
+      const firebasePromise = addDoc(collection(db, 'refuel_records'), recordData)
+        .then(() => console.log("✅ Firebase: Record saved"))
+        .catch((e) => console.error("❌ Firebase insert error:", e));
+
+      const supabasePromise = (async () => {
+        try {
+          const { error } = await supabase.from('refuel_records').insert({
+            ...recordData,
+            date: newRecord.date // Supabase can handle Date objects
+          });
+          if (error) console.error("❌ Supabase insert error:", error);
+          else console.log("✅ Supabase: Record saved");
+        } catch (e) {
+          console.error("❌ Supabase insert exception:", e);
+        }
+      })();
+
+      // Wait for both to complete
+      await Promise.allSettled([firebasePromise, supabasePromise]);
+
+      // Mark as synced
+      updateRecord(newRecord.id, { synced: true });
     }
   };
+
 
   const updateRecord = (id: string, updates: Partial<RefuelRecord>) => {
     const updatedRecords = records.map((r) =>

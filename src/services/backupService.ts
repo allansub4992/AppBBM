@@ -1,3 +1,4 @@
+import { supabase } from "@/lib/supabase"; // Use centralized Supabase client
 import { db } from "@/lib/firebase";
 import { RefuelRecord, Vehicle, FuelPrice } from "@/types/fuel";
 import { collection, getDocs, query, where, doc, setDoc } from "firebase/firestore";

@@ -37,7 +37,7 @@ export default function RefuelRecordCard({
             <div className={`p-2 brutalist-border bg-${colorClass} flex-shrink-0`}>
               <Fuel className="w-5 h-5 text-brutalist-charcoal" strokeWidth={3} />
             </div>
-            
+
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <h4 className={`font-display text-lg text-${colorClass}`}>
@@ -58,7 +58,7 @@ export default function RefuelRecordCard({
                     year: "numeric",
                   })}
                 </span>
-                <span>{record.liters}L</span>
+                <span>{Math.round(record.liters)}L</span>
               </div>
             </div>
           </div>
@@ -76,9 +76,8 @@ export default function RefuelRecordCard({
 
       {/* Action buttons */}
       <div
-        className={`absolute right-0 top-0 bottom-0 flex items-center gap-2 pr-4 transition-all duration-300 ${
-          showActions ? "translate-x-0 opacity-100" : "translate-x-full opacity-0"
-        }`}
+        className={`absolute right-0 top-0 bottom-0 flex items-center gap-2 pr-4 transition-all duration-300 ${showActions ? "translate-x-0 opacity-100" : "translate-x-full opacity-0"
+          }`}
       >
         <button
           onClick={() => onEdit(record)}

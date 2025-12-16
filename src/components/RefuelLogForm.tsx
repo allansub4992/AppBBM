@@ -4,8 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Camera, X, Image as ImageIcon, Trash2 } from "lucide-react";
+import { Camera, X, Image as ImageIcon, Trash2, QrCode, Loader2 } from "lucide-react";
 import { useFuel } from "@/contexts/FuelContext";
+import { useAuth } from "@/contexts/AuthContext";
+import QRScanner from "./QRScanner";
+import { uploadReceiptImage } from "@/services/imageStorage";
 
 interface RefuelLogFormProps {
   onClose: () => void;
@@ -24,18 +27,21 @@ interface RefuelLogFormProps {
 
 export default function RefuelLogForm({ onClose, onSuccess, editRecord }: RefuelLogFormProps) {
   const { addRecord, updateRecord, prices, vehicles } = useFuel();
+  const { user } = useAuth();
 
   const [date, setDate] = useState(
     editRecord?.date ? new Date(editRecord.date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0]
   );
   const [station, setStation] = useState<StationChain>(editRecord?.station || "Pertamina");
   const [fuelType, setFuelType] = useState<FuelType>(editRecord?.fuelType || "Pertalite");
-  const [liters, setLiters] = useState(editRecord?.liters.toString() || "");
+  const [liters, setLiters] = useState(editRecord?.liters ? Math.round(editRecord.liters).toString() : "");
   const [totalCost, setTotalCost] = useState(editRecord?.totalCost.toString() || "");
   const [manualPrice, setManualPrice] = useState(editRecord?.pricePerLiter.toString() || "");
   const [vehicleId, setVehicleId] = useState<string>(editRecord?.vehicleId || "");
   const [receiptPhoto, setReceiptPhoto] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showQRScanner, setShowQRScanner] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -90,12 +96,51 @@ export default function RefuelLogForm({ onClose, onSuccess, editRecord }: Refuel
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Handle QR scan result
+  const handleQRScan = (data: string) => {
+    // Try to parse QR data - format may vary by gas station
+    console.log('QR Data:', data);
+    // Attempt to extract data if it's JSON or structured
+    try {
+      const parsed = JSON.parse(data);
+      if (parsed.liters) setLiters(Math.round(parsed.liters).toString());
+      if (parsed.total) setTotalCost(parsed.total.toString());
+      if (parsed.station) {
+        const stationMap: Record<string, StationChain> = {
+          'pertamina': 'Pertamina',
+          'shell': 'Shell',
+          'bp': 'BP',
+          'total': 'Total',
+          'vivo': 'Vivo'
+        };
+        const mappedStation = stationMap[parsed.station.toLowerCase()];
+        if (mappedStation) setStation(mappedStation);
+      }
+    } catch {
+      // If not JSON, just log it
+      console.log('QR contains non-JSON data:', data);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const litersNum = parseFloat(liters);
+    const litersNum = Math.round(parseFloat(liters));
     const costNum = parseFloat(totalCost);
     const pricePerLiter = manualPrice ? parseFloat(manualPrice) : costNum / litersNum;
+
+    // Upload receipt photo to Supabase if present
+    let receiptPhotoUrl: string | undefined;
+    if (receiptPhoto && user) {
+      setIsUploading(true);
+      const { url, error } = await uploadReceiptImage(receiptPhoto, user.uid);
+      if (url) {
+        receiptPhotoUrl = url;
+      } else {
+        console.error('Failed to upload receipt:', error);
+      }
+      setIsUploading(false);
+    }
 
     if (editRecord) {
       updateRecord(editRecord.id, {
@@ -106,6 +151,7 @@ export default function RefuelLogForm({ onClose, onSuccess, editRecord }: Refuel
         totalCost: costNum,
         pricePerLiter,
         vehicleId: vehicleId || undefined,
+        receiptPhoto: receiptPhotoUrl,
       });
       onSuccess?.("Catatan berhasil diperbarui");
     } else {
@@ -117,6 +163,7 @@ export default function RefuelLogForm({ onClose, onSuccess, editRecord }: Refuel
         totalCost: costNum,
         pricePerLiter,
         vehicleId: vehicleId || undefined,
+        receiptPhoto: receiptPhotoUrl,
       });
       onSuccess?.("Catatan berhasil ditambahkan");
     }
@@ -222,11 +269,12 @@ export default function RefuelLogForm({ onClose, onSuccess, editRecord }: Refuel
             </Label>
             <Input
               type="number"
-              step="0.01"
+              step="1"
+              min="1"
               value={liters}
               onChange={(e) => handleLitersChange(e.target.value)}
               className="brutalist-border bg-brutalist-charcoal text-brutalist-cream font-mono text-2xl p-4 h-auto"
-              placeholder="0.00"
+              placeholder="0"
               required
             />
           </div>
@@ -297,37 +345,62 @@ export default function RefuelLogForm({ onClose, onSuccess, editRecord }: Refuel
                 </div>
               </div>
             ) : (
-              // Show capture button
-              <button
-                type="button"
-                onClick={handleCameraCapture}
-                disabled={isCapturing}
-                className="w-full brutalist-border brutalist-shadow-cyan bg-brutalist-charcoal p-6 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all duration-75 disabled:opacity-50"
-              >
-                {isCapturing ? (
-                  <>
-                    <div className="w-8 h-8 border-4 border-brutalist-cyan border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                    <span className="font-body text-brutalist-cyan">Memproses...</span>
-                  </>
-                ) : (
-                  <>
-                    <Camera className="w-8 h-8 text-brutalist-cyan mx-auto mb-2" strokeWidth={3} />
-                    <span className="font-body text-brutalist-cyan">Ambil Foto Struk</span>
-                  </>
-                )}
-              </button>
+              // Show capture buttons
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleCameraCapture}
+                  disabled={isCapturing}
+                  className="flex-1 brutalist-border brutalist-shadow-cyan bg-brutalist-charcoal p-4 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all duration-75 disabled:opacity-50"
+                >
+                  {isCapturing ? (
+                    <>
+                      <div className="w-6 h-6 border-4 border-brutalist-cyan border-t-transparent rounded-full animate-spin mx-auto mb-1" />
+                      <span className="font-body text-brutalist-cyan text-sm">Memproses...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-6 h-6 text-brutalist-cyan mx-auto mb-1" strokeWidth={3} />
+                      <span className="font-body text-brutalist-cyan text-sm">Foto Struk</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowQRScanner(true)}
+                  className="flex-1 brutalist-border brutalist-shadow-green bg-brutalist-charcoal p-4 hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all duration-75"
+                >
+                  <QrCode className="w-6 h-6 text-brutalist-green mx-auto mb-1" strokeWidth={3} />
+                  <span className="font-body text-brutalist-green text-sm">Scan QR</span>
+                </button>
+              </div>
             )}
           </div>
 
           {/* Submit Button */}
           <Button
             type="submit"
-            className="w-full brutalist-border brutalist-shadow-yellow bg-brutalist-yellow hover:bg-brutalist-yellow/90 text-brutalist-charcoal font-display text-xl py-6 h-auto transition-all duration-75 hover:translate-x-1 hover:translate-y-1 hover:shadow-none active:scale-[0.97]"
+            disabled={isUploading}
+            className="w-full brutalist-border brutalist-shadow-yellow bg-brutalist-yellow hover:bg-brutalist-yellow/90 text-brutalist-charcoal font-display text-xl py-6 h-auto transition-all duration-75 hover:translate-x-1 hover:translate-y-1 hover:shadow-none active:scale-[0.97] disabled:opacity-50"
           >
-            {editRecord ? "UPDATE" : "SIMPAN"}
+            {isUploading ? (
+              <>
+                <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                Mengunggah...
+              </>
+            ) : (
+              editRecord ? "UPDATE" : "SIMPAN"
+            )}
           </Button>
         </form>
       </div>
+
+      {/* QR Scanner Modal */}
+      <QRScanner
+        isOpen={showQRScanner}
+        onClose={() => setShowQRScanner(false)}
+        onScan={handleQRScan}
+      />
     </div>
   );
 }
